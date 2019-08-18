@@ -1,0 +1,58 @@
+---
+- name: Install docker
+  hosts: all
+  become: True
+  tasks:
+
+  - name : Add sylvain sudoers user
+    lineinfile :
+      path : /etc/sudoers.d/sylvain
+      line : '%sylvain ALL=(ALL) NOPASSWD: ALL'
+      create : yes
+
+  - name : Authorize ssh connection by password
+    shell: sed -i "s#PasswordAuthentication no#PasswordAuthentication yes#g" /etc/ssh/sshd_config
+
+  - name : Reboot sshd
+    service:
+      name : sshd
+      state : restarted
+
+  - name: Check if user sylvain exists
+    shell: cat /etc/passwd | awk -F":" '{print $1}'
+    register: etc_users
+    changed_when: "'sylvain' not in etc_users.stdout_lines"
+
+  - name: Create user sylvain
+    user:
+      name: sylvain
+      password: '$6$u9PiVLOcids$Mqxs4ZAfDqjWX4MHeVyps1XFZ98eTVtkSspW/yhPpTHpCUrIqFJozwrhNL3YQQRgOWRBN4E1a41fV.N9DGl52/'
+      groups: root
+      state: present
+      shell: /bin/bash
+      system: no
+      createhome: yes
+      home: /home/sylvain
+    when: '"sylvain" not in etc_users.stdout_lines'
+
+  - name: Desactivate SELinux
+    selinux:
+      state: disabled
+    register: task_result
+
+  - name: Add docker-ce repository
+    template:
+      src: docker-ce.repo
+      dest: /etc/yum.repos.d/docker-ce.repo
+
+  - name: Install docker-ce
+    yum:
+      name: docker-ce
+      state: present
+      update_cache: yes
+
+  - name: Enable docker and start it
+    systemd:
+      name: docker
+      enabled: yes
+      state: started
